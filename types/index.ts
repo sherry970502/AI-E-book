@@ -96,6 +96,7 @@ export interface Section {
   elements: SectionElements
   brief: string   // 教学要点：本节讲什么（大纲层，生成正文的依据）
   block_plan: ContentBlock[]  // 正文脉络：已确认的教学颗粒序列
+  source_unit_id?: string | null  // 二创：本节由原书哪个知识单元物化而来（null=非物化/目标增补节）
 }
 
 // ─── 封面 ─────────────────────────────────────────────────────────────────────

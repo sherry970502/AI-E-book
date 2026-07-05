@@ -128,11 +128,11 @@ export function updateSectionBlockPlan(id: string, plan: Section['block_plan']) 
 export function createSection(data: Omit<Section, 'objective_ids' | 'elements' | 'brief' | 'block_plan'> & { objective_ids: string[]; elements?: Partial<Section['elements']>; brief?: string }): Section {
   const db = getDb()
   db.prepare(`
-    INSERT INTO sections (id,chapter_id,book_id,order_index,title,content,status,objective_ids,page_number,elements,brief)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO sections (id,chapter_id,book_id,order_index,title,content,status,objective_ids,page_number,elements,brief,source_unit_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(data.id, data.chapter_id, data.book_id, data.order_index, data.title,
     data.content ?? null, data.status, JSON.stringify(data.objective_ids), data.page_number ?? null,
-    JSON.stringify({ ...DEFAULT_ELEMENTS, ...(data.elements ?? {}) }), data.brief ?? '')
+    JSON.stringify({ ...DEFAULT_ELEMENTS, ...(data.elements ?? {}) }), data.brief ?? '', data.source_unit_id ?? null)
   return getSection(data.id)!
 }
 

@@ -15,9 +15,17 @@ interface Props {
   objectives: LearningObjective[]
   onChanged: () => void
   onConfirm: () => void
+  /** 场景文案定制（二创场景展示"原书纲要"语境） */
+  heading?: string
+  description?: React.ReactNode
+  confirmLabel?: string
+  secondaryAction?: React.ReactNode
 }
 
-export function OutlineView({ chapters, sections, objectives, onChanged, onConfirm }: Props) {
+export function OutlineView({
+  chapters, sections, objectives, onChanged, onConfirm,
+  heading, description, confirmLabel, secondaryAction,
+}: Props) {
   const objMap = Object.fromEntries(objectives.map(o => [o.id, o]))
   const byChapter = sections.reduce<Record<string, Section[]>>((a, s) => {
     ;(a[s.chapter_id] ??= []).push(s); return a
@@ -30,18 +38,23 @@ export function OutlineView({ chapters, sections, objectives, onChanged, onConfi
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8">
         {/* 头部 */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between mb-6 gap-4">
           <div>
-            <h2 className="text-[17px] font-bold text-zinc-800">教学大纲</h2>
+            <h2 className="text-[17px] font-bold text-zinc-800">{heading ?? '教学大纲'}</h2>
             <p className="text-[12px] text-zinc-400 mt-1">
-              学习目标决定教学内容——先在这里确认全书脉络与目标覆盖，再进入正文创作。<br />
-              所有内容可直接点击编辑，也可以让右侧主编帮你调（如「把 1.2 的要点改得更侧重图像直觉」）。
+              {description ?? (
+                <>学习目标决定教学内容——先在这里确认全书脉络与目标覆盖，再进入正文创作。<br />
+                所有内容可直接点击编辑，也可以让右侧主编帮你调（如「把 1.2 的要点改得更侧重图像直觉」）。</>
+              )}
             </p>
           </div>
-          <button onClick={onConfirm}
-            className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-[13px] font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100">
-            {completed > 0 ? '继续正文创作' : '确认大纲，开始创作正文'} <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            <button onClick={onConfirm}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-[13px] font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100">
+              {confirmLabel ?? (completed > 0 ? '继续正文创作' : '确认大纲，开始创作正文')} <ArrowRight className="w-4 h-4" />
+            </button>
+            {secondaryAction}
+          </div>
         </div>
 
         {/* 全书目标覆盖摘要 */}

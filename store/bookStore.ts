@@ -13,6 +13,7 @@ interface BookState {
   libraries: ObjectiveLibrary[]
   selectedObjectiveIds: string[]
   coverage: Record<string, number>
+  sourceStats: Record<string, number>
   isLoading: boolean
   error: string | null
 
@@ -39,6 +40,7 @@ export const useBookStore = create<BookState>((set, get) => ({
   libraries: [],
   selectedObjectiveIds: [],
   coverage: {},
+  sourceStats: {},
   isLoading: false,
   error: null,
 
@@ -53,8 +55,8 @@ export const useBookStore = create<BookState>((set, get) => ({
     set({ isLoading: true })
     const res = await fetch(`/api/books/${id}`)
     if (!res.ok) { set({ isLoading: false, error: 'not found' }); return }
-    const { book, chapters, sections, skeleton, knowledgeUnits, coverage } = await res.json()
-    set({ currentBook: book, chapters, sections, skeleton, knowledgeUnits, coverage: coverage ?? {}, isLoading: false })
+    const { book, chapters, sections, skeleton, knowledgeUnits, coverage, sourceStats } = await res.json()
+    set({ currentBook: book, chapters, sections, skeleton, knowledgeUnits, coverage: coverage ?? {}, sourceStats: sourceStats ?? {}, isLoading: false })
   },
 
   fetchObjectives: async (libraryId) => {

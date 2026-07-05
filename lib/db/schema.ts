@@ -161,4 +161,8 @@ export function initSchema(db: Database.Database) {
   try {
     db.exec(`ALTER TABLE sections ADD COLUMN block_plan TEXT NOT NULL DEFAULT '[]'`)
   } catch { /* 列已存在 */ }
+  // 增量迁移：二创物化溯源——本节由原书哪个知识单元物化而来（用于删除↔小节联动）
+  try {
+    db.exec(`ALTER TABLE sections ADD COLUMN source_unit_id TEXT`)
+  } catch { /* 列已存在 */ }
 }

@@ -21,7 +21,7 @@ export default function BookWorkspacePage() {
 
   const {
     fetchBook, fetchObjectives, currentBook, chapters, sections,
-    objectives, libraries, coverage, selectedObjectiveIds, setSelectedObjectiveIds, generateToc,
+    objectives, libraries, coverage, sourceStats, selectedObjectiveIds, setSelectedObjectiveIds, generateToc,
   } = useBookStore()
   const {
     paragraphs, illustrations, questions, streamingContent, isStreaming,
@@ -336,20 +336,28 @@ export default function BookWorkspacePage() {
 
         <div className="flex-1" />
 
-        {/* sourceTag 图例 + 筛选（线路B）*/}
-        {isAdaptation && !inDesignStage && (
-          <div className="flex items-center gap-1 mr-1">
-            <button onClick={() => setSourceFilter('all')}
-              className={`text-[10px] px-2 py-1 rounded-md transition-colors ${sourceFilter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-100'}`}>全部</button>
-            {(Object.keys(SOURCE_TAG_META) as SourceTag[]).map(tag => (
-              <button key={tag} onClick={() => setSourceFilter(sourceFilter === tag ? 'all' : tag)}
-                className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors ${sourceFilter === tag ? SOURCE_TAG_META[tag].chip + ' ring-1 ring-current' : 'text-zinc-500 hover:bg-zinc-100'}`}>
-                <span className={`w-2 h-2 rounded-full ${SOURCE_TAG_META[tag].bar}`} />
-                {SOURCE_TAG_META[tag].label}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* sourceTag 图例 + 筛选 + 全书来源占比（线路B 忠实度审计）*/}
+        {isAdaptation && !inDesignStage && (() => {
+          const total = (Object.keys(SOURCE_TAG_META) as SourceTag[]).reduce((n, t) => n + (sourceStats[t] ?? 0), 0)
+          const pct = (n: number) => total ? Math.round((n / total) * 100) : 0
+          return (
+            <div className="flex items-center gap-1 mr-1" title={total ? `全书共 ${total} 段，按来源占比` : '生成正文后显示来源占比'}>
+              <button onClick={() => setSourceFilter('all')}
+                className={`text-[10px] px-2 py-1 rounded-md transition-colors ${sourceFilter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-100'}`}>全部</button>
+              {(Object.keys(SOURCE_TAG_META) as SourceTag[]).map(tag => {
+                const n = sourceStats[tag] ?? 0
+                return (
+                  <button key={tag} onClick={() => setSourceFilter(sourceFilter === tag ? 'all' : tag)}
+                    className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors ${sourceFilter === tag ? SOURCE_TAG_META[tag].chip + ' ring-1 ring-current' : 'text-zinc-500 hover:bg-zinc-100'}`}>
+                    <span className={`w-2 h-2 rounded-full ${SOURCE_TAG_META[tag].bar}`} />
+                    {SOURCE_TAG_META[tag].label}
+                    {total > 0 && <span className="tabular-nums font-medium opacity-70">{pct(n)}%</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {!inDesignStage && (
           <button onClick={() => setCoverEditorOpen(true)}

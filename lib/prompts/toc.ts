@@ -9,7 +9,8 @@ export function buildTocSystem() {
 {"title":"第一章 章名","summary":"本章教学大纲：讲什么、怎么递进（40-70字）","objective_idx":[1,3],"sections":[{"title":"1.1 节名","brief":"本节教学要点：具体讲哪些内容、达到什么程度（30-50字）","objective_idx":[1]}]}
 
 objective_idx 是从「学习目标列表」中选取的目标序号（1-based）。每章覆盖 2-4 个目标，每节 1-2 个；所有目标应尽量被目录覆盖。
-summary 和 brief 是给老师审阅的教学脉络——必须具体（写清知识点与讲法），不要空话。`
+summary 和 brief 是给老师审阅的教学脉络——必须具体（写清知识点与讲法），不要空话。
+JSON 合法性（重要）：字符串值内部禁止出现未转义的英文双引号与换行；引用书名/名句一律用中文引号「」或《》。`
 }
 
 export function buildTocPrompt(book: Book, objectives: LearningObjective[]) {

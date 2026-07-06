@@ -455,6 +455,7 @@ export default function BookWorkspacePage() {
                   chapters={chapters} sections={sections} objectives={objectives}
                   onChanged={handleStructureChanged}
                   onConfirm={() => setView('reader')}
+                  targetWordCount={currentBook?.target_word_count}
                 />
               </div>
             ) : pages.length <= 1 ? (

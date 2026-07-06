@@ -20,11 +20,18 @@ interface Props {
   description?: React.ReactNode
   confirmLabel?: string
   secondaryAction?: React.ReactNode
+  /** 书籍目标字数（用于结构确认条的预估对比；不传则只显示预估） */
+  targetWordCount?: number | null
 }
+
+/** 每节正文的字数区间（与 lib/prompts/section.ts 中「正文 800-1200 字」保持一致） */
+const WORDS_PER_SECTION = { min: 800, max: 1200 }
+
+const fmtWan = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1).replace(/\.0$/, '')}万` : `${n}`
 
 export function OutlineView({
   chapters, sections, objectives, onChanged, onConfirm,
-  heading, description, confirmLabel, secondaryAction,
+  heading, description, confirmLabel, secondaryAction, targetWordCount,
 }: Props) {
   const objMap = Object.fromEntries(objectives.map(o => [o.id, o]))
   const byChapter = sections.reduce<Record<string, Section[]>>((a, s) => {
@@ -57,12 +64,37 @@ export function OutlineView({
           </div>
         </div>
 
-        {/* 全书目标覆盖摘要 */}
-        <div className="flex items-center gap-2 mb-5 text-[11.5px] text-zinc-500 bg-amber-50/60 border border-amber-100 rounded-xl px-4 py-2.5">
-          <Target className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          全书共覆盖 <b className="text-amber-700">{allObjIds.size}</b> 个学习目标 · {chapters.length} 章 {sections.length} 节
-          {completed > 0 && <span className="ml-auto text-green-600">{completed} 节已有正文（改大纲不影响已生成内容）</span>}
-        </div>
+        {/* 结构确认条：章节数量 + 字数预估（老师在这里确认规模再进正文） */}
+        {(() => {
+          const estMin = sections.length * WORDS_PER_SECTION.min
+          const estMax = sections.length * WORDS_PER_SECTION.max
+          const estMid = (estMin + estMax) / 2
+          const target = targetWordCount ?? 0
+          const dev = target > 0 ? (estMid - target) / target : 0
+          const devLabel = target > 0
+            ? Math.abs(dev) <= 0.2
+              ? { text: '与目标基本吻合', cls: 'text-green-600' }
+              : dev > 0
+                ? { text: `预计超出目标约 ${Math.round(dev * 100)}%，可删减小节`, cls: 'text-orange-500' }
+                : { text: `预计低于目标约 ${Math.round(-dev * 100)}%，可增加小节`, cls: 'text-orange-500' }
+            : null
+          return (
+            <div className="mb-5 text-[11.5px] text-zinc-500 bg-amber-50/60 border border-amber-100 rounded-xl px-4 py-2.5 space-y-1">
+              <div className="flex items-center gap-2">
+                <Target className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                当前结构：<b className="text-amber-700">{chapters.length}</b> 章 <b className="text-amber-700">{sections.length}</b> 节
+                · 覆盖 <b className="text-amber-700">{allObjIds.size}</b> 个学习目标
+                {completed > 0 && <span className="ml-auto text-green-600">{completed} 节已有正文（改大纲不影响已生成内容）</span>}
+              </div>
+              <div className="flex items-center gap-2 pl-[22px]">
+                预估正文 <b className="text-amber-700">{fmtWan(estMin)}–{fmtWan(estMax)} 字</b>
+                <span className="text-zinc-400">（每节 {WORDS_PER_SECTION.min}–{WORDS_PER_SECTION.max} 字）</span>
+                {target > 0 && <>· 目标 <b className="text-zinc-600">{fmtWan(target)} 字</b></>}
+                {devLabel && <span className={devLabel.cls}>· {devLabel.text}</span>}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* 章卡片 */}
         <div className="space-y-5">

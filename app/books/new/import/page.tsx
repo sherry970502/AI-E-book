@@ -215,6 +215,7 @@ function ImportPageContent() {
                 chapters={chapters} sections={sections} objectives={objectives}
                 onChanged={() => fetchBook(bookId)}
                 onConfirm={() => setStep('intent')}
+                targetWordCount={currentBook?.target_word_count}
                 heading="原书纲要（AI 解构）"
                 description={<>这是 AI 从原书拆解出的章节结构、教学要点与学习目标——<b>在既有物上做决定</b>。<br />
                   可直接点击编辑任何内容，或告诉右侧主编改什么（如「把第二章拆成两章」「删掉 3.2」）。</>}

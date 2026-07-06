@@ -91,33 +91,52 @@ ${aliveUnits.map(u => `- [${u.intent === 'keep' ? '保留改写' : '深度重写
 改编方案：受众迁移=${plan?.audience_note || '无'}；教学法=${plan?.pedagogy || '无'}；意图=${[plan?.free_intent, ...(plan?.structured_intent ?? [])].filter(Boolean).join('；') || '无'}`
             : ''
           let buffer = ''
+          let rawFull = ''
           let emitted = 0
+          // 任意形态的解析值 → 逐章落库：兼容单章对象、章数组、以及 {"chapters":[...]} 包装对象
+          //（模型偶尔不按 NDJSON 一行一章输出——这正是"随机丢章/丢整本"的根因）
+          const emitAny = (val: unknown): void => {
+            if (!val || typeof val !== 'object') return
+            if (Array.isArray(val)) { for (const v of val) emitAny(v); return }
+            const obj = val as Record<string, unknown>
+            // 章判定要严：必须带 sections 数组，或标题形如「第X章」——防止重同步捞出的小节对象（{title,brief}）被误当成章
+            const isChapter = typeof obj.title === 'string' &&
+              (Array.isArray(obj.sections) || (!('brief' in obj) && /第[^章]{1,6}章/.test(obj.title)))
+            if (isChapter) {
+              persistAndEmit(obj as unknown as RawChapter, startIndex + emitted++)
+              return
+            }
+            // 包装对象：找由带 title 的对象组成的数组属性（如 chapters/toc），逐项展开
+            for (const v of Object.values(obj)) {
+              if (Array.isArray(v) && v.some(x => x && typeof x === 'object' && typeof (x as { title?: unknown }).title === 'string')) {
+                for (const item of v) emitAny(item)
+                return
+              }
+            }
+          }
+          // 花括号配平提取每一个完整 JSON 对象，容忍对象内换行/代码围栏/噪音——不按行切分
+          const drain = () => {
+            let hit: { value: unknown; rest: string } | null
+            while ((hit = extractNextJsonObject(buffer)) !== null) {
+              buffer = hit.rest
+              emitAny(hit.value)
+            }
+          }
           await streamClaude(
             [{ role: 'user', content: buildTocPrompt(book, objectives) + adaptationCtx }],
             buildTocSystem(),
-            (chunk) => {
-              buffer += chunk
-              // 按行切分，完整行立即解析入库并推送
-              let nl: number
-              while ((nl = buffer.indexOf('\n')) !== -1) {
-                const line = buffer.slice(0, nl).trim()
-                buffer = buffer.slice(nl + 1)
-                if (!line) continue
-                try {
-                  const raw = JSON.parse(line) as RawChapter
-                  if (raw.title) persistAndEmit(raw, startIndex + emitted++)
-                } catch { /* 半截行或噪音，跳过 */ }
-              }
-            },
+            (chunk) => { buffer += chunk; rawFull += chunk; drain() },
             8000
           )
-          // 收尾：缓冲区里可能还有最后一行
-          const last = buffer.trim()
-          if (last) {
+          drain() // 收尾：抠出缓冲区里最后一个完整对象
+          if (emitted < 3 && rawFull.trim()) {
+            // 章数可疑地少（正常目录 ≥3 章）→ 留取证据，便于排查新的输出形态（不影响响应）
+            console.error(`[generate-toc] 仅解析出 ${emitted} 章，模型原文前 800 字符：\n` + rawFull.slice(0, 800))
             try {
-              const raw = JSON.parse(last) as RawChapter
-              if (raw.title) persistAndEmit(raw, startIndex + emitted++)
-            } catch { /* noop */ }
+              const { writeFileSync } = await import('fs')
+              const { tmpdir } = await import('os')
+              writeFileSync(`${tmpdir()}/toc-parse-fail-${Date.now()}.txt`, rawFull)
+            } catch { /* 尽力而为 */ }
           }
         }
         controller.enqueue(encoder.encode(JSON.stringify({ type: 'done', chapterCount, sectionCount }) + '\n'))
@@ -131,6 +150,98 @@ ${aliveUnits.map(u => `- [${u.intent === 'keep' ? '保留改写' : '深度重写
   return new Response(stream, {
     headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-Accel-Buffering': 'no' },
   })
+}
+
+/**
+ * 从缓冲区提取下一个完整的顶层 JSON 对象（花括号配平，感知字符串与转义）。
+ * 返回 { value, rest }：value 是解析出的对象（配平但非法时为 null），rest 是剩余缓冲；
+ * 尚无完整对象时返回 null（等待更多流入）。对 LLM 输出健壮——容忍代码围栏、前后噪音、
+ * 对象内部的真实换行、以及偶发的多行美化 JSON，从根上避免"某一章那行解析失败被丢掉"。
+ */
+function extractNextJsonObject(buf: string): { value: unknown; rest: string } | null {
+  const start = buf.indexOf('{')
+  if (start === -1) return null
+  let depth = 0, inStr = false, esc = false
+  for (let i = start; i < buf.length; i++) {
+    const c = buf[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+    } else if (c === '"') inStr = true
+    else if (c === '{') depth++
+    else if (c === '}') {
+      if (--depth === 0) {
+        const slice = buf.slice(start, i + 1)
+        const rest = buf.slice(i + 1)
+        try { return { value: JSON.parse(slice), rest } }
+        catch {
+          // 常见 LLM 瑕疵逐级修复：①字符串内裸换行/制表 ②字符串内未转义引号（如 引入"园林是什么"，）
+          try { return { value: JSON.parse(repairControlChars(slice)), rest } }
+          catch {
+            try { return { value: JSON.parse(repairInnerQuotes(repairControlChars(slice))), rest } }
+            catch {
+              // 仍非法：不整块丢弃——从失败块内部下一个 { 重同步再试，最多丢坏的那一章，救回后面的章
+              return { value: null, rest: buf.slice(start + 1) }
+            }
+          }
+        }
+      }
+    }
+  }
+  return null // 对象未闭合，等更多 chunk
+}
+
+/**
+ * 修复 JSON 字符串值内部未转义的英文双引号（模型高频瑕疵，如 "summary":"引入"园林是什么"，介绍…"）。
+ * 判别：串内遇到 " 时，看其后第一个非空白字符——是 ASCII 的 , : } ] 之一（或到结尾）则视为真正的闭串引号，
+ * 否则视为文中引号并转义。中文语料后面跟的是全角标点/汉字，判别非常可靠。
+ */
+function repairInnerQuotes(s: string): string {
+  let out = '', inStr = false, esc = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (!inStr) {
+      out += c
+      if (c === '"') inStr = true
+      continue
+    }
+    if (esc) { out += c; esc = false; continue }
+    if (c === '\\') { out += c; esc = true; continue }
+    if (c === '"') {
+      let j = i + 1
+      while (j < s.length && (s[j] === ' ' || s[j] === '\n' || s[j] === '\r' || s[j] === '\t')) j++
+      const next = j < s.length ? s[j] : ''
+      if (next === ',' || next === ':' || next === '}' || next === ']' || next === '') {
+        out += c; inStr = false      // 真闭串
+      } else {
+        out += '\\"'                 // 文中引号 → 转义
+      }
+      continue
+    }
+    out += c
+  }
+  return out
+}
+
+/** 把 JSON 字符串字面量内部的裸控制字符转义（\n \r \t），修复模型偶发的非法 JSON。 */
+function repairControlChars(s: string): string {
+  let out = '', inStr = false, esc = false
+  for (const c of s) {
+    if (inStr) {
+      if (esc) { out += c; esc = false; continue }
+      if (c === '\\') { out += c; esc = true; continue }
+      if (c === '"') { out += c; inStr = false; continue }
+      if (c === '\n') { out += '\\n'; continue }
+      if (c === '\r') { out += '\\r'; continue }
+      if (c === '\t') { out += '\\t'; continue }
+      out += c
+    } else {
+      out += c
+      if (c === '"') inStr = true
+    }
+  }
+  return out
 }
 
 /** 改编 Mock：按原书章组织，剔除删除单元，节名取知识单元 */

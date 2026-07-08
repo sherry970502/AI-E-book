@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2, Sparkles,
-  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X, Download,
+  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X, Download, ImagePlus, Upload,
 } from 'lucide-react'
 import { useBookStore } from '@/store/bookStore'
 import { useEditorStore } from '@/store/editorStore'
@@ -41,7 +41,7 @@ export default function BookWorkspacePage() {
   const [generatingQuestions, setGeneratingQuestions] = useState(false)
   const [sourceFilter, setSourceFilter] = useState<SourceTag | 'all'>('all')
   const [quotedText, setQuotedText] = useState<string | null>(null)
-  const [selectionBtn, setSelectionBtn] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [selectionBtn, setSelectionBtn] = useState<{ x: number; y: number; text: string; pid: string | null } | null>(null)
   const [cover, setCover] = useState<BookCover | null>(null)
   const [coverEditorOpen, setCoverEditorOpen] = useState(false)
   const bookAreaRef = useRef<HTMLDivElement>(null)
@@ -250,11 +250,47 @@ export default function BookWorkspacePage() {
     const text = sel?.toString().trim()
     if (text && text.length >= 8 && sel && sel.rangeCount) {
       const rect = sel.getRangeAt(0).getBoundingClientRect()
-      setSelectionBtn({ x: rect.left + rect.width / 2, y: rect.top - 8, text })
+      // 定位选区所属段落（配图要锚到该段）
+      let node: Node | null = sel.anchorNode
+      let pid: string | null = null
+      while (node && node !== document.body) {
+        if (node instanceof HTMLElement && node.dataset.pid) { pid = node.dataset.pid; break }
+        node = node.parentNode
+      }
+      setSelectionBtn({ x: rect.left + rect.width / 2, y: rect.top - 8, text, pid })
     } else {
       setSelectionBtn(null)
     }
   }, [])
+
+  // ── 为选中内容配图：以选中文字为 prompt/图注，插到该句所在段之后 ──
+  const selUploadRef = useRef<HTMLInputElement>(null)
+  const [selBusy, setSelBusy] = useState(false)
+  const illustrateSelection = useCallback(async (kind: 'ai' | 'upload', file?: File) => {
+    if (!selectionBtn || !currentSectionId) return
+    const { text, pid } = selectionBtn
+    setSelBusy(true)
+    try {
+      if (kind === 'ai') {
+        await fetch('/api/ai/illustration', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionId: currentSectionId, sectionTitle: currentSection?.title ?? '', paragraphId: pid, paragraphText: text, caption: text.slice(0, 40) }),
+        })
+      } else if (file) {
+        const fd = new FormData()
+        fd.append('file', file); fd.append('sectionId', currentSectionId)
+        fd.append('sectionTitle', currentSection?.title ?? '')
+        if (pid) fd.append('paragraphId', pid)
+        fd.append('caption', text.slice(0, 40))
+        await fetch('/api/ai/illustration/upload', { method: 'POST', body: fd })
+      }
+      setSelectionBtn(null)
+      window.getSelection()?.removeAllRanges()
+      if (currentSectionId) fetchSectionDetail(currentSectionId)
+    } finally {
+      setSelBusy(false)
+    }
+  }, [selectionBtn, currentSectionId, currentSection, fetchSectionDetail])
 
   // ── 主编改动后：刷新数据并夹紧页码 ──
   const handleStructureChanged = useCallback(async () => {
@@ -531,12 +567,26 @@ export default function BookWorkspacePage() {
 
           {/* 选区引用浮动按钮 */}
           {selectionBtn && (
-            <button
-              className="fixed z-50 flex items-center gap-1 -translate-x-1/2 -translate-y-full bg-zinc-900 text-white text-[11px] px-2.5 py-1.5 rounded-lg shadow-xl hover:bg-zinc-700 transition-colors"
+            <div
+              className="fixed z-50 flex items-center gap-0.5 -translate-x-1/2 -translate-y-full bg-zinc-900 text-white rounded-lg shadow-xl px-1 py-1"
               style={{ left: selectionBtn.x, top: selectionBtn.y }}
-              onClick={() => { setQuotedText(selectionBtn.text); setChatOpen(true); setSelectionBtn(null); window.getSelection()?.removeAllRanges() }}>
-              <Quote className="w-3 h-3" />引用到对话
-            </button>
+              onMouseDown={e => e.preventDefault()}>
+              <button className="flex items-center gap-1 text-[11px] px-2 py-1 rounded hover:bg-zinc-700 transition-colors"
+                onClick={() => { setQuotedText(selectionBtn.text); setChatOpen(true); setSelectionBtn(null); window.getSelection()?.removeAllRanges() }}>
+                <Quote className="w-3 h-3" />引用到对话
+              </button>
+              <span className="w-px h-4 bg-zinc-700" />
+              <button disabled={selBusy} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                onClick={() => illustrateSelection('ai')}>
+                {selBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}为选中内容配图
+              </button>
+              <button disabled={selBusy} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                onClick={() => selUploadRef.current?.click()}>
+                <Upload className="w-3 h-3" />上传到此处
+              </button>
+              <input ref={selUploadRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) illustrateSelection('upload', f); e.target.value = '' }} />
+            </div>
           )}
         </main>
 

@@ -22,6 +22,12 @@ export const COVER_PALETTES: Record<string, { bg: string; accent: string; text: 
 
 // 版心参数由开本驱动（需求 3.1/3.4）
 export const BOOK_W = { portrait: 700, landscape: 990 }
+
+// 识别「图占位」段落：内容基本就是 [图：描述]，作为待生成配图的插槽
+export function figurePlaceholderDesc(content: string): string | null {
+  const m = content.trim().match(/^\[图[:：]\s*([\s\S]*?)\s*\]$/)
+  return m ? (m[1] || '示意图') : null
+}
 export const BOOK_H = { portrait: 990, landscape: 556 }
 export const PAGE_PAD = { portrait: 'px-16 py-12', landscape: 'px-20 py-10' }
 export const BODY_TEXT = { portrait: 'text-[15px] leading-[1.95]', landscape: 'text-[14px] leading-[1.85]' }
@@ -504,14 +510,18 @@ function ParagraphBlock({
   const uploadRef = useRef<HTMLInputElement>(null)
   const tagMeta = paragraph.source_tag ? SOURCE_TAG_META[paragraph.source_tag] : null
 
-  const callIllustration = useCallback(async (kind: 'ai' | 'upload', file?: File) => {
+  const callIllustration = useCallback(async (kind: 'ai' | 'upload', file?: File, opts?: { prompt?: string; caption?: string }) => {
     setBusy(true)
     try {
       let res: Response
       if (kind === 'ai') {
         res = await fetch('/api/ai/illustration', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionId, paragraphText: paragraph.content.slice(0, 600), sectionTitle, paragraphId: paragraph.id }),
+          body: JSON.stringify({
+            sectionId, sectionTitle, paragraphId: paragraph.id,
+            paragraphText: (opts?.prompt ?? paragraph.content).slice(0, 600),
+            caption: opts?.caption,
+          }),
         })
       } else {
         const fd = new FormData()
@@ -519,6 +529,7 @@ function ParagraphBlock({
         fd.append('sectionId', sectionId)
         fd.append('sectionTitle', sectionTitle)
         fd.append('paragraphId', paragraph.id)
+        if (opts?.caption) fd.append('caption', opts.caption)
         res = await fetch('/api/ai/illustration/upload', { method: 'POST', body: fd })
       }
       if (res.ok) onInsertIllustration?.(await res.json())
@@ -527,8 +538,13 @@ function ParagraphBlock({
     }
   }, [sectionId, sectionTitle, paragraph, onInsertIllustration])
 
+  // 图占位插槽：内容是 [图：desc] 且尚无插图 → 渲染「待生成配图」卡片而非裸文字
+  const figDesc = figurePlaceholderDesc(paragraph.content)
+  const isEmptyFigureSlot = figDesc !== null && illustrations.length === 0
+
   return (
-    <div className={`relative group/para transition-all duration-200 ${dimmed ? 'opacity-25' : ''} ${dropTarget ? 'ring-2 ring-blue-300 ring-offset-2 rounded-md' : ''}`}
+    <div data-pid={paragraph.id}
+      className={`relative group/para transition-all duration-200 ${dimmed ? 'opacity-25' : ''} ${dropTarget ? 'ring-2 ring-blue-300 ring-offset-2 rounded-md' : ''}`}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onDragOver={e => { if (e.dataTransfer.types.includes('text/illustration-id')) { e.preventDefault(); setDropTarget(true) } }}
       onDragLeave={() => setDropTarget(false)}
@@ -576,16 +592,44 @@ function ParagraphBlock({
         <span className={`absolute -left-3 top-1 bottom-1 w-[3px] rounded-full ${tagMeta.bar}`} title={tagMeta.label} />
       )}
 
-      {/* 段落正文（点击反查目标）；引用块 = 独立的「重点说明」教学块 */}
-      <div onClick={onClick}
-        className={`cursor-pointer rounded-md transition-all duration-200 -mx-2 px-2 ${highlighted ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-zinc-50/70'}`}>
-        {paragraph.content.trimStart().startsWith('>') && (
-          <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-blue-500/80 bg-blue-50 border border-blue-100 rounded px-1.5 py-px mt-3 -mb-1">
-            💡 重点说明
-          </span>
-        )}
-        <MarkdownBlock content={paragraph.content} orientation={orientation} />
-      </div>
+      {/* 图占位插槽：待生成配图卡片（点一下用占位描述生成/上传，图就位后此卡自动消失）*/}
+      {isEmptyFigureSlot ? (
+        <div className="my-5 border-2 border-dashed border-blue-200 rounded-xl bg-blue-50/40 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <ImagePlus className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-blue-600 mb-0.5">待生成配图</p>
+              <p className="text-[12.5px] text-zinc-600 leading-relaxed">{figDesc}</p>
+              <div className="flex items-center gap-2 mt-3">
+                <button onClick={e => { e.stopPropagation(); callIllustration('ai', undefined, { prompt: figDesc!, caption: figDesc! }) }} disabled={busy}
+                  className="flex items-center gap-1 px-3 py-1.5 text-[11.5px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}AI 生成此图
+                </button>
+                <button onClick={e => { e.stopPropagation(); uploadRef.current?.click() }} disabled={busy}
+                  className="flex items-center gap-1 px-3 py-1.5 text-[11.5px] border border-zinc-200 text-zinc-600 rounded-lg hover:border-blue-300 hover:text-blue-700 disabled:opacity-50 transition-colors">
+                  <Upload className="w-3 h-3" />上传
+                </button>
+              </div>
+            </div>
+          </div>
+          <input ref={uploadRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) callIllustration('upload', f, { caption: figDesc! }); e.target.value = '' }} />
+        </div>
+      ) : figDesc !== null ? (
+        /* 图占位且已配图：占位文字不再显示，图由下方渲染 */
+        null
+      ) : (
+        /* 段落正文（点击反查目标）；引用块 = 独立的「重点说明」教学块 */
+        <div onClick={onClick}
+          className={`cursor-pointer rounded-md transition-all duration-200 -mx-2 px-2 ${highlighted ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-zinc-50/70'}`}>
+          {paragraph.content.trimStart().startsWith('>') && (
+            <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-blue-500/80 bg-blue-50 border border-blue-100 rounded px-1.5 py-px mt-3 -mb-1">
+              💡 重点说明
+            </span>
+          )}
+          <MarkdownBlock content={paragraph.content.replace(/\[图[:：][^\]]*\]/g, '').trim()} orientation={orientation} />
+        </div>
+      )}
 
       {/* 本段插图 */}
       {illustrations.map(il => (

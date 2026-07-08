@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
   const sectionId = formData.get('sectionId') as string
   const sectionTitle = formData.get('sectionTitle') as string
   const paragraphId = (formData.get('paragraphId') as string) || null
+  const caption = (formData.get('caption') as string) || ''
 
   if (!file || !sectionId) {
     return NextResponse.json({ error: 'missing file or sectionId' }, { status: 400 })
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     id: randomUUID(),
     section_id: sectionId,
     paragraph_id: paragraphId,
-    caption: `${sectionTitle} 插图`,
+    caption: (caption.trim() || `${sectionTitle} 插图`).slice(0, 60),
     figure_number: figureNumberFor(sectionId),
     source: 'uploaded' as const,
     url: dataUrl,

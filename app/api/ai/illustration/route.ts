@@ -23,7 +23,7 @@ function buildMockSvg(paragraphText: string, figureNumber: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { sectionId, paragraphId, paragraphText, sectionTitle } = await req.json()
+  const { sectionId, paragraphId, paragraphText, sectionTitle, caption } = await req.json()
 
   const figNum = figureNumberFor(sectionId)
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     id: randomUUID(),
     section_id: sectionId,
     paragraph_id: paragraphId ?? null,
-    caption: `${sectionTitle} 示意图`,
+    caption: (caption?.trim() || `${sectionTitle} 示意图`).slice(0, 60),
     figure_number: figNum,
     source: process.env.ANTHROPIC_API_KEY ? 'ai-svg' : 'ai-svg',
     url: null,

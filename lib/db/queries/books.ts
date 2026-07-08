@@ -14,12 +14,12 @@ export function getBook(id: string): Book | null {
 export function createBook(data: Omit<Book, 'created_at' | 'updated_at'>): Book {
   const db = getDb()
   db.prepare(`
-    INSERT INTO books (id,title,topic,positioning,audience_grade,audience_age,prior_level,style,orientation,target_word_count,target_page_count,source,source_file_path)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO books (id,title,topic,positioning,audience_grade,audience_age,prior_level,style,genre,orientation,target_word_count,target_page_count,source,source_file_path)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     data.id, data.title, data.topic, data.positioning,
     data.audience_grade, data.audience_age, data.prior_level,
-    data.style, data.orientation,
+    data.style, data.genre ?? 'textbook', data.orientation,
     data.target_word_count, data.target_page_count,
     data.source, data.source_file_path ?? null
   )

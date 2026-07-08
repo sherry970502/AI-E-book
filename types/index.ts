@@ -33,6 +33,7 @@ export interface Book {
   audience_age: string
   prior_level: string
   style: string
+  genre: string
   orientation: BookOrientation
   target_word_count: number
   target_page_count: number

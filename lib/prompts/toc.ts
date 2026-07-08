@@ -1,4 +1,5 @@
 import type { Book, LearningObjective } from '@/types'
+import { getGenre } from '@/lib/genres'
 
 export function buildTocSystem() {
   return `你是资深教材主编，负责为新课本设计目录结构。
@@ -19,6 +20,7 @@ export function buildTocPrompt(book: Book, objectives: LearningObjective[]) {
     : '（未勾选目标，请按主题自行组织，objective_idx 输出空数组）'
 
   const chapterCount = Math.max(3, Math.min(10, Math.round(book.target_page_count / 12)))
+  const genre = getGenre(book.genre)
 
   return `课本信息：
 - 名称：${book.title}
@@ -27,7 +29,7 @@ export function buildTocPrompt(book: Book, objectives: LearningObjective[]) {
 - 受众：${book.audience_grade} / ${book.audience_age} / 先验水平：${book.prior_level}
 - 风格：${book.style}
 - 规模：约 ${book.target_word_count} 字 / ${book.target_page_count} 页 → 建议 ${chapterCount} 章左右，每章 2-4 节
-
+${genre.tocContract ? `\n${genre.tocContract}\n（体裁契约优先于上面的章节数建议；但输出格式仍是「章-节」两级 JSON，objective_idx 照常关联——学习目标锚定不因体裁改变）\n` : ''}
 学习目标列表：
 ${objList}
 

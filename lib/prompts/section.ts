@@ -1,4 +1,5 @@
 import type { Book, Section, Chapter, LearningObjective, KnowledgeUnit } from '@/types'
+import { getGenre } from '@/lib/genres'
 
 /**
  * 段落元信息标记协议：
@@ -15,10 +16,11 @@ export function buildSectionSystem(book: Book) {
     casual: '轻松活泼，多用类比和生活例子，语气亲切',
     mixed: '深入浅出，兼顾知识密度与可读性',
   }
-  return `你是${book.topic}领域的专业教材作者。
+  const genre = getGenre(book.genre)
+  return `你是${book.topic}领域的专业${genre.id === 'textbook' ? '教材' : genre.label}作者。
 受众：${book.audience_grade}，${book.audience_age}，先验水平：${book.prior_level}。
 写作风格：${styleMap[book.style] ?? book.style}。
-
+${genre.proseContract ? `\n${genre.proseContract}\n（体裁契约优先于下面的排版规范中与之冲突的条目；标记协议不受影响，必须照常输出）\n` : ''}
 输出 Markdown 正文，遵守以下排版规范：
 - 重要概念首次出现时**粗体**
 - 「重点说明」（关键结论/深入分析/易错警示）用 > 引用框，且必须独立成块——它是独立的教学内容块，有自己的标记行，不与普通叙述段合并
@@ -30,11 +32,19 @@ export function buildSectionSystem(book: Book) {
 例如 <!--m o=1,2 s=generated--> 或 <!--m o= s=generated-->（该段不对应任何目标时）。`
 }
 
+// 体裁决定单节篇幅：绘本一个跨页只有几句话，教材/小说/畅销书按常规节篇幅
+const GENRE_LENGTH: Record<string, string> = {
+  'picture-book': '正文 100-200 字（1-3 句话 + 一个 [图：] 占位即可，宁少勿多）',
+  'novel': '正文 900-1400 字',
+  'bestseller': '正文 800-1200 字',
+}
+
 export function buildSectionPrompt(
   chapter: Chapter,
   section: Section,
   objectives: LearningObjective[],
-  units?: KnowledgeUnit[]
+  units?: KnowledgeUnit[],
+  book?: Book
 ) {
   const objDesc = objectives.length
     ? objectives.map((o, i) => `${i + 1}. ${o.description}（${o.cognitive_dimension}）`).join('\n')
@@ -60,7 +70,7 @@ ${objDesc}
 ${unitCtx}${planCtx}
 
 要求：
-- 正文 800-1200 字
+- ${GENRE_LENGTH[book?.genre ?? ''] ?? '正文 800-1200 字'}
 - 每个段落块后按协议输出 <!--m o=... s=generated--> 标记`
 }
 

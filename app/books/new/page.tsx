@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BookOpen, ArrowRight, Sparkles, FileUp } from 'lucide-react'
 import { useBookStore } from '@/store/bookStore'
+import { GENRE_PRESETS } from '@/lib/genres'
 
 // ─── 风格预设（附示例文案预览）────────────────────────────────────────────────
 const STYLE_PRESETS = [
@@ -55,6 +56,7 @@ export default function NewBookPage() {
     audience_age: '15-18岁',
     prior_level: '有初中基础',
     style: 'mixed',
+    genre: 'textbook',
     orientation: 'portrait' as 'portrait' | 'landscape',
     target_word_count: 30000,
     target_page_count: 80,
@@ -167,9 +169,33 @@ export default function NewBookPage() {
             </div>
           </section>
 
-          {/* ④ 整体风格（预设卡片 + 示例文案预览）*/}
+          {/* ④ 体裁（体裁定骨：贯穿目录结构、正文脉络、文字表达三层）*/}
           <section className="bg-white rounded-2xl border border-zinc-200 p-6 space-y-4">
-            <h2 className="text-sm font-bold text-zinc-800">整体风格</h2>
+            <h2 className="text-sm font-bold text-zinc-800">体裁<span className="ml-2 text-xs font-normal text-zinc-400">决定这本书「长什么样」——从目录结构到正文表达</span></h2>
+            <div className="grid grid-cols-4 gap-3">
+              {GENRE_PRESETS.map(g => (
+                <button key={g.id} type="button" onClick={() => set('genre', g.id)}
+                  className={`text-left p-4 rounded-xl border-2 transition-all ${form.genre === g.id ? 'border-blue-500 bg-blue-50/50' : 'border-zinc-200 hover:border-zinc-300'}`}>
+                  <span className="text-lg">{g.emoji}</span>
+                  <span className="block font-semibold text-zinc-800 text-sm mt-1">{g.label}</span>
+                  <span className="block text-[11px] text-zinc-400 mt-0.5 leading-snug">{g.desc}</span>
+                </button>
+              ))}
+            </div>
+            {(() => {
+              const g = GENRE_PRESETS.find(x => x.id === form.genre)
+              return g ? (
+                <div className="bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3">
+                  <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">同一主题在该体裁下的样貌</p>
+                  <p className="text-[13px] text-zinc-600 leading-relaxed italic">{g.sample}</p>
+                </div>
+              ) : null
+            })()}
+          </section>
+
+          {/* ⑤ 整体风格（体裁内的微调：同一体裁可严谨可活泼）*/}
+          <section className="bg-white rounded-2xl border border-zinc-200 p-6 space-y-4">
+            <h2 className="text-sm font-bold text-zinc-800">整体风格<span className="ml-2 text-xs font-normal text-zinc-400">体裁内的语气微调</span></h2>
             <div className="grid grid-cols-3 gap-3">
               {STYLE_PRESETS.map(s => (
                 <button key={s.value} type="button"

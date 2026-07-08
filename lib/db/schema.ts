@@ -165,4 +165,8 @@ export function initSchema(db: Database.Database) {
   try {
     db.exec(`ALTER TABLE sections ADD COLUMN source_unit_id TEXT`)
   } catch { /* 列已存在 */ }
+  // 增量迁移：体裁（教科书/绘本/小说/畅销书——贯穿目录、脉络、正文三层 prompt 的契约）
+  try {
+    db.exec(`ALTER TABLE books ADD COLUMN genre TEXT NOT NULL DEFAULT 'textbook'`)
+  } catch { /* 列已存在 */ }
 }

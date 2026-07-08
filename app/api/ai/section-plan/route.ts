@@ -5,6 +5,7 @@ import { getObjectivesByIds } from '@/lib/db/queries/objectives'
 import { getAdaptationPlan } from '@/lib/db/queries/adaptation'
 import { randomUUID } from 'crypto'
 import type { ContentBlock, BlockType } from '@/types'
+import { getGenre } from '@/lib/genres'
 
 const VALID_TYPES = new Set<string>(['intro', 'concept', 'callout', 'example', 'figure', 'summary', 'exercise'])
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 教学要点（老师已确认）：${section.brief || '无'}
 学习目标：${objectives.map(o => `${o.description}（${o.cognitive_dimension}）`).join('；') || '无'}
 受众：${book.audience_grade}；风格：${book.style}${plan?.pedagogy ? `；教学法偏好：${plan.pedagogy}` : ''}
-
+${getGenre(book.genre).planHint ? `\n【体裁】本书体裁为「${getGenre(book.genre).label}」：${getGenre(book.genre).planHint}\n` : ''}
 可用颗粒类型：intro(情境导入) concept(核心概念) callout(重点说明) example(典型例题) figure(配图示意) summary(小结) exercise(互动练习)
 
 要求：5-8 个颗粒组成合理的教学递进；每个颗粒的 desc 一句话写清具体承载什么（结合教学要点，不写空话）；同类型可出现多次（如两道例题）。

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const prompt = isRegen
     ? buildRegeneratePrompt(chapter, section, objectives, units,
         mergedIntent, audienceNote ?? plan?.audience_note ?? '', pedagogy ?? plan?.pedagogy ?? '')
-    : buildSectionPrompt(chapter, section, objectives, units)
+    : buildSectionPrompt(chapter, section, objectives, units, book)
 
   const encoder = new TextEncoder()
   const MARKER_RE = /<!--m[\s\S]*?-->/g

@@ -37,14 +37,25 @@ export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     groups = mockGroups(modules)
   } else {
-    const raw = await callClaude(
-      [{ role: 'user', content: buildDraftObjectivesPrompt(topic, { grade: audience_grade ?? '', age: audience_age ?? '', prior: prior_level ?? '' }, modules) }],
-      buildDraftObjectivesSystem(),
-      6000
-    )
-    groups = parseJSON<DraftGroup[]>(raw, mockGroups(modules))
-    if (!Array.isArray(groups) || !groups.length) groups = mockGroups(modules)
+    try {
+      const raw = await callClaude(
+        [{ role: 'user', content: buildDraftObjectivesPrompt(topic, { grade: audience_grade ?? '', age: audience_age ?? '', prior: prior_level ?? '' }, modules) }],
+        buildDraftObjectivesSystem(),
+        6000
+      )
+      groups = parseJSON<DraftGroup[]>(raw, mockGroups(modules))
+      if (!Array.isArray(groups) || !groups.length) groups = mockGroups(modules)
+    } catch (e) {
+      // AI 调用失败（额度/限流/网络）→ 返回可读错误，别抛裸 500
+      console.error('[draft-objectives] AI 失败:', e)
+      return NextResponse.json(
+        { error: 'AI 生成学习目标失败：' + (e instanceof Error ? e.message : String(e)) },
+        { status: 502 }
+      )
+    }
   }
+
+  try {
 
   // 沉淀入库（沿用线路 B「AI提取」建库先例）：《主题》· AI 起草
   const libId = randomUUID()
@@ -73,4 +84,11 @@ export async function POST(req: NextRequest) {
     groups: result,
     total: result.reduce((n, g) => n + g.objectives.length, 0),
   })
+  } catch (e) {
+    console.error('[draft-objectives] 入库失败:', e)
+    return NextResponse.json(
+      { error: '学习目标入库失败：' + (e instanceof Error ? e.message : String(e)) },
+      { status: 500 }
+    )
+  }
 }

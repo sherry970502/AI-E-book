@@ -42,12 +42,20 @@ export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     plan = mockPlan(need)
   } else {
-    const raw = await callClaude(
-      [{ role: 'user', content: buildPositioningPrompt(need.trim()) }],
-      buildPositioningSystem(),
-      3000
-    )
-    plan = parseJSON<PositioningPlan>(raw, mockPlan(need))
+    try {
+      const raw = await callClaude(
+        [{ role: 'user', content: buildPositioningPrompt(need.trim()) }],
+        buildPositioningSystem(),
+        3000
+      )
+      plan = parseJSON<PositioningPlan>(raw, mockPlan(need))
+    } catch (e) {
+      console.error('[draft-positioning] AI 失败:', e)
+      return NextResponse.json(
+        { error: 'AI 起草定位方案失败：' + (e instanceof Error ? e.message : String(e)) },
+        { status: 502 }
+      )
+    }
   }
   // 守护：模块至少 3 个，缺字段兜底
   if (!Array.isArray(plan.modules) || plan.modules.length < 3) plan.modules = mockPlan(need).modules

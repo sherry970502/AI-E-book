@@ -50,24 +50,28 @@ export default function DraftWizardPage() {
   const [groups, setGroups] = useState<ObjGroup[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
+  const [err, setErr] = useState('')
 
   // ── ①→②：一句话 → 定位方案卡 ──
   async function draftPlan() {
     if (!need.trim()) return
-    setBusy(true)
+    setBusy(true); setErr('')
     try {
       const res = await fetch('/api/ai/draft-positioning', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ need }),
       })
-      if (res.ok) { setPlan(await res.json()); setStep('plan') }
-    } finally { setBusy(false) }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { setPlan(data); setStep('plan') }
+      else setErr(data.error || `起草失败（${res.status}）`)
+    } catch (e) { setErr(e instanceof Error ? e.message : '网络错误') }
+    finally { setBusy(false) }
   }
 
   // ── ②→③：确认范围 → 生成学习目标并入库 ──
   async function draftObjectives() {
     if (!plan) return
-    setBusy(true)
+    setBusy(true); setErr('')
     try {
       const res = await fetch('/api/ai/draft-objectives', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -77,14 +81,16 @@ export default function DraftWizardPage() {
           modules: plan.modules,
         }),
       })
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        const { groups } = await res.json() as { groups: ObjGroup[] }
+        const { groups } = data as { groups: ObjGroup[] }
         setGroups(groups)
         setChecked(new Set(groups.flatMap(g => g.objectives.map(o => o.id))))  // 默认全选
         await fetchObjectives()  // 新库进全局目标库列表
         setStep('objectives')
-      }
-    } finally { setBusy(false) }
+      } else setErr(data.error || `生成失败（${res.status}）`)
+    } catch (e) { setErr(e instanceof Error ? e.message : '网络错误') }
+    finally { setBusy(false) }
   }
 
   // ── ③：创建书 → 预选目标 → 进工作台（目录生成沿用现有流程，每步可控）──
@@ -127,6 +133,14 @@ export default function DraftWizardPage() {
             </span>
           ))}
         </div>
+
+        {err && (
+          <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[12.5px] text-red-700">
+            <X className="w-4 h-4 shrink-0 mt-px" />
+            <span className="flex-1 break-all">{err}</span>
+            <button onClick={() => setErr('')} className="shrink-0 text-red-400 hover:text-red-600">×</button>
+          </div>
+        )}
 
         {/* ── ① 一句话需求 ── */}
         {step === 'input' && (

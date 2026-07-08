@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2, Sparkles,
-  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X,
+  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X, Download,
 } from 'lucide-react'
 import { useBookStore } from '@/store/bookStore'
 import { useEditorStore } from '@/store/editorStore'
@@ -363,6 +363,13 @@ export default function BookWorkspacePage() {
           <button onClick={() => setCoverEditorOpen(true)}
             className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 transition-colors">
             <Palette className="w-3.5 h-3.5" />封面
+          </button>
+        )}
+        {!inDesignStage && (
+          <button onClick={() => window.open(`/books/${bookId}/print?autoprint=1`, '_blank')}
+            title="导出整本书为 PDF（在打印对话框选“另存为 PDF”）"
+            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 transition-colors">
+            <Download className="w-3.5 h-3.5" />导出 PDF
           </button>
         )}
         {/* 目标库面板只在目录设计阶段出现——正文阶段目标以"本节目标检视条"呈现 */}

@@ -8,7 +8,9 @@ export async function parseFileToText(file: File): Promise<string> {
   if (name.endsWith('.pdf')) {
     const arrayBuffer = await file.arrayBuffer()
     const pdfjs = await import('pdfjs-dist')
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+    // worker 文件由 public/pdf.worker.min.mjs 提供（版本须与 pdfjs-dist 一致）。
+    // pdfjs v5 的 worker 是 ESM（.mjs），旧路径 /pdf.worker.min.js 不存在会导致解析报错。
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
     const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
     const pages: string[] = []
     for (let i = 1; i <= pdf.numPages; i++) {

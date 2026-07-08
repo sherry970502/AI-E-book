@@ -22,14 +22,23 @@ export async function callClaude(
   system: string,
   maxTokens = 4096
 ): Promise<string> {
-  const res = await getClient().messages.create({
+  // 内部走流式再拼接（对调用方透明）：非流式长请求全程无字节流动，
+  // 本地 HTTP 代理约 3 分钟就会掐断空闲连接（UND_ERR_SOCKET: other side closed）；
+  // 流式 SSE 持续有数据经过，连接不会被判定为空闲。
+  const stream = await getClient().messages.create({
     model: MODEL,
     max_tokens: maxTokens,
     system,
     messages,
+    stream: true,
   })
-  const block = res.content[0]
-  return block.type === 'text' ? block.text : ''
+  let full = ''
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      full += event.delta.text
+    }
+  }
+  return full
 }
 
 export async function streamClaude(

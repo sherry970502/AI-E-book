@@ -48,7 +48,7 @@ export function ChatPanel({ bookId, quotedText, onClearQuote, onStructureChanged
         <Wand2 className="w-4 h-4 text-purple-500" />
         <div>
           <h3 className="text-[13px] font-bold text-zinc-800">AI 主编</h3>
-          <p className="text-[10px] text-zinc-400">下指令直接改书——大纲、章节级修改实时生效</p>
+          <p className="text-[10px] text-zinc-400">下指令直接改书——大纲、章节、正文段落修改实时生效</p>
         </div>
       </div>
 
@@ -59,6 +59,9 @@ export function ChatPanel({ bookId, quotedText, onClearQuote, onStructureChanged
             <p>「把整本书大纲缩减为最核心的四章」</p>
             <p>「在第二章增加小节：函数的实际应用」</p>
             <p>「删除第三章」「第一章改名：走进函数世界」</p>
+            <p className="pt-1 font-medium text-zinc-500">翻到正文页后还能改段落：</p>
+            <p>「把第二段那句引用换成更贴切的说法」</p>
+            <p>「第三段开头改得更口语化」「删掉第五段」</p>
           </div>
         )}
         {chatHistory.map(node => (

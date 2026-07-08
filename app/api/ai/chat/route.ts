@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callClaude, parseJSON } from '@/lib/ai'
 import { buildChatSystem, buildChatPrompt } from '@/lib/prompts/chat'
 import {
-  getBook, getChapters, getSectionsByChapter, createChapter, createSection,
+  getBook, getChapters, getSection, getSectionsByChapter, createChapter, createSection,
   deleteChapter, deleteSection, updateChapter, updateSection, updateSectionElements,
   normalizeChapterOrder, normalizeSectionOrder,
 } from '@/lib/db/queries/books'
+import {
+  getParagraphs, createParagraph, updateParagraphContent, deleteParagraph, renumberParagraphs,
+} from '@/lib/db/queries/paragraphs'
+import { getIllustrationsBySection, deleteIllustration } from '@/lib/db/queries/illustrations'
 import { addChatNode } from '@/lib/db/queries/chat'
 import { getDb } from '@/lib/db'
 import { randomUUID } from 'crypto'
@@ -26,11 +30,18 @@ interface ChatOp {
   after?: number
   exercise?: boolean
   illustration?: boolean
+  // 段落/插图级操作（作用于用户当前正在看的节）
+  paragraph?: number
+  content?: string
+  figure?: number
 }
+
+// 这些操作改的是当前节的正文内容 → 执行后前端需重取本节
+const SECTION_CONTENT_OPS = new Set(['edit_paragraph', 'insert_paragraph', 'delete_paragraph', 'delete_illustration'])
 interface ChatResult { scope: string; reply: string; operations: ChatOp[] }
 
 export async function POST(req: NextRequest) {
-  const { bookId, message, context } = await req.json()
+  const { bookId, message, context, sectionId } = await req.json()
   const book = getBook(bookId)
   if (!book) return NextResponse.json({ error: 'book not found' }, { status: 404 })
 
@@ -38,14 +49,20 @@ export async function POST(req: NextRequest) {
   const sectionsByChapter: Record<string, Section[]> = {}
   for (const c of chapters) sectionsByChapter[c.id] = getSectionsByChapter(c.id)
 
+  // 用户当前翻到的正文页 → 段落全文+插图清单进上下文，主编才能执行段落/插图级修改
+  const curSection = sectionId ? getSection(sectionId) : null
+  const curParagraphs = curSection ? getParagraphs(curSection.id) : []
+  const curIllustrations = curSection ? getIllustrationsBySection(curSection.id) : []
+
   addChatNode({ id: randomUUID(), book_id: bookId, role: 'user', content: message, scope: null, target_id: null })
 
   let result: ChatResult
   if (!process.env.ANTHROPIC_API_KEY) {
-    result = mockParseInstruction(message, chapters, sectionsByChapter)
+    result = mockParseInstruction(message, chapters, sectionsByChapter, curParagraphs.length, curIllustrations.length)
   } else {
     const raw = await callClaude(
-      [{ role: 'user', content: buildChatPrompt(message, chapters, sectionsByChapter, context) }],
+      [{ role: 'user', content: buildChatPrompt(message, chapters, sectionsByChapter, context,
+        curSection ? { title: curSection.title, paragraphs: curParagraphs, illustrations: curIllustrations } : null) }],
       buildChatSystem(book),
       3000
     )
@@ -55,17 +72,21 @@ export async function POST(req: NextRequest) {
   // ── 执行操作 ──
   const applied: string[] = []
   const errors: string[] = []
+  let paragraphChanged = false
   // 删除操作先按序号降序执行，避免序号漂移
   const ops = [...(result.operations ?? [])].sort((a, b) => {
     const del = (o: ChatOp) => o.op.startsWith('delete') ? 1 : 0
     if (del(a) !== del(b)) return del(b) - del(a)
-    return (b.chapter ?? 0) - (a.chapter ?? 0)
+    return (b.chapter ?? 0) - (a.chapter ?? 0) || (b.paragraph ?? 0) - (a.paragraph ?? 0)
   })
 
   for (const op of ops) {
     try {
-      const desc = applyOp(bookId, op)
-      if (desc) applied.push(desc)
+      const desc = applyOp(bookId, op, curSection?.id)
+      if (desc) {
+        applied.push(desc)
+        if (SECTION_CONTENT_OPS.has(op.op)) paragraphChanged = true
+      }
     } catch (e) {
       errors.push(`${op.op} 失败：${e instanceof Error ? e.message : '未知'}`)
     }
@@ -77,7 +98,7 @@ export async function POST(req: NextRequest) {
 
   addChatNode({
     id: randomUUID(), book_id: bookId, role: 'assistant',
-    content: result.reply, scope: result.scope === 'none' ? null : (result.scope as 'toc' | 'chapter' | 'section'),
+    content: result.reply, scope: result.scope === 'none' ? null : (result.scope as import('@/types').ChatScope),
     target_id: null,
   })
 
@@ -87,10 +108,11 @@ export async function POST(req: NextRequest) {
     applied,
     errors,
     refresh: applied.length > 0,
+    refreshSection: paragraphChanged,  // 段落有改动 → 前端重取当前节正文
   })
 }
 
-function applyOp(bookId: string, op: ChatOp): string | null {
+function applyOp(bookId: string, op: ChatOp, curSectionId?: string): string | null {
   // 每次执行前重取最新目录（前序操作可能已改变结构）
   const chapters = getChapters(bookId)
   const ch = op.chapter ? chapters[op.chapter - 1] : undefined
@@ -180,9 +202,55 @@ function applyOp(bookId: string, op: ChatOp): string | null {
       if (elements.illustration !== undefined) parts.push(`自动配图${elements.illustration ? '开启' : '关闭'}`)
       return `${scopeDesc}：${parts.join('、')}`
     }
+    // ── 段落级操作：作用于用户当前正在看的节；改动一律标记「老师指定」进来源审计 ──
+    case 'edit_paragraph': {
+      const paras = requireParagraphs(curSectionId)
+      const p = op.paragraph ? paras[op.paragraph - 1] : undefined
+      if (!p) throw new Error(`本节没有第${op.paragraph}段（共${paras.length}段）`)
+      if (!op.content?.trim()) throw new Error('缺少改写后的段落内容')
+      updateParagraphContent(p.id, op.content.trim(), 'teacher-specified')
+      return `改写了本节第${op.paragraph}段`
+    }
+    case 'insert_paragraph': {
+      if (!curSectionId) throw new Error('当前不在正文页，无法定位段落')
+      const paras = getParagraphs(curSectionId)
+      if (!op.content?.trim()) throw new Error('缺少新段落内容')
+      const after = Math.max(0, Math.min(op.after ?? paras.length, paras.length))
+      createParagraph({
+        id: randomUUID(), section_id: curSectionId,
+        // 小数占位插到 after 段之后，renumber 时归整
+        order_index: (paras[after - 1]?.order_index ?? -1) + 0.5,
+        content: op.content.trim(), objective_ids: [], source_tag: 'teacher-specified',
+      })
+      renumberParagraphs(curSectionId)
+      return after === 0 ? '在本节开头插入了新段落' : `在本节第${after}段之后插入了新段落`
+    }
+    case 'delete_paragraph': {
+      const paras = requireParagraphs(curSectionId)
+      const p = op.paragraph ? paras[op.paragraph - 1] : undefined
+      if (!p) throw new Error(`本节没有第${op.paragraph}段（共${paras.length}段）`)
+      deleteParagraph(p.id)
+      renumberParagraphs(curSectionId!)
+      return `删除了本节第${op.paragraph}段`
+    }
+    case 'delete_illustration': {
+      if (!curSectionId) throw new Error('当前不在正文页，无法定位插图')
+      const ils = getIllustrationsBySection(curSectionId)
+      const il = op.figure ? ils[op.figure - 1] : undefined
+      if (!il) throw new Error(`本节没有第${op.figure}张插图（共${ils.length}张）`)
+      deleteIllustration(il.id)
+      return `删除了插图 ${il.figure_number}「${il.caption}」`
+    }
     default:
       return null
   }
+}
+
+function requireParagraphs(curSectionId?: string) {
+  if (!curSectionId) throw new Error('当前不在正文页，无法定位段落')
+  const paras = getParagraphs(curSectionId)
+  if (!paras.length) throw new Error('本节还没有正文，请先生成')
+  return paras
 }
 
 function updateChapterOrderFloat(id: string, order: number) {
@@ -201,8 +269,46 @@ function toNum(s: string): number {
 function mockParseInstruction(
   message: string,
   chapters: Chapter[],
-  sectionsByChapter: Record<string, Section[]>
+  sectionsByChapter: Record<string, Section[]>,
+  paragraphCount = 0,
+  illustrationCount = 0
 ): ChatResult {
+  // 插图级：删除第 N 张图 / 删除图N
+  const im = message.match(/删(?:除|掉)(?:本节)?(?:第([一二两三四五六七八九十\d]+)张)?(?:插?图)(?:([一二两三四五六七八九十\d]+))?/)
+  if (im && (im[1] || im[2]) && illustrationCount > 0) {
+    const n = toNum(im[1] || im[2])
+    if (n >= 1 && n <= illustrationCount) {
+      return {
+        scope: 'paragraph',
+        reply: `（Mock 主编）已删除本节第${n}张插图。`,
+        operations: [{ op: 'delete_illustration', figure: n }],
+      }
+    }
+  }
+  // 段落级：把第 N 段改为/改成：xxx（当前正文页内）
+  let pm = message.match(/(?:把|将)?第([一二两三四五六七八九十\d]+)段.*?(?:改为|改成|替换为)\s*[：:「"']?\s*([\s\S]+?)[」"']?\s*$/)
+  if (pm && paragraphCount > 0) {
+    const n = toNum(pm[1])
+    if (n >= 1 && n <= paragraphCount) {
+      return {
+        scope: 'paragraph',
+        reply: `（Mock 主编）已把本节第${pm[1]}段替换为你给出的内容，并标记为「老师指定」。`,
+        operations: [{ op: 'edit_paragraph', paragraph: n, content: pm[2] }],
+      }
+    }
+  }
+  // 段落级：删除第 N 段
+  pm = message.match(/删(?:除|掉)(?:本节)?第([一二两三四五六七八九十\d]+)段/)
+  if (pm && paragraphCount > 0) {
+    const n = toNum(pm[1])
+    if (n >= 1 && n <= paragraphCount) {
+      return {
+        scope: 'paragraph',
+        reply: `（Mock 主编）已删除本节第${pm[1]}段。`,
+        operations: [{ op: 'delete_paragraph', paragraph: n }],
+      }
+    }
+  }
   // 缩减为 N 章
   let m = message.match(/(?:缩减|精简|压缩|保留).*?([一二两三四五六七八九十\d]+)\s*章/)
   if (m) {
@@ -266,7 +372,7 @@ function mockParseInstruction(
 
   return {
     scope: 'none',
-    reply: `（Mock 主编）我理解你的想法。当前无 API Key，我能执行的结构指令示例：「把大纲缩减为最核心的四章」「删除第二章」「在第一章增加小节：函数的图像」「增加一章：综合复习」「第三章改名：进阶应用」。配置 API Key 后可自由表达任何修改意图。`,
+    reply: `（Mock 主编）我理解你的想法。当前无 API Key，我能执行的指令示例：「把大纲缩减为最核心的四章」「删除第二章」「在第一章增加小节：函数的图像」「增加一章：综合复习」「第三章改名：进阶应用」；翻到正文页后还有「把第二段改为：……」「删除第三段」。配置 API Key 后可自由表达任何修改意图。`,
     operations: [],
   }
 }

@@ -111,19 +111,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // 节点式主编对话：返回 refresh 标志（true = 结构已改，外层刷新看板）
   sendChat: async (bookId, message, context) => {
     set(s => ({ chatHistory: [...s.chatHistory, { id: `u-${Date.now()}`, role: 'user', content: message }] }))
+    // 带上当前正在看的节 → 主编获得正文段落上下文，可执行段落级修改
+    const sectionId = get().activeSection?.id
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bookId, message, context }),
+      body: JSON.stringify({ bookId, message, context, sectionId }),
     })
     if (!res.ok) {
       set(s => ({ chatHistory: [...s.chatHistory, { id: `a-${Date.now()}`, role: 'assistant', content: '主编暂时开小差了，稍后再试。' }] }))
       return { refresh: false }
     }
-    const { reply, scope, applied, refresh } = await res.json()
+    const { reply, scope, applied, refresh, refreshSection } = await res.json()
     set(s => ({
       chatHistory: [...s.chatHistory, { id: `a-${Date.now()}`, role: 'assistant', content: reply, scope, applied }],
     }))
+    // 段落有改动 → 重取当前节正文，书页即时更新
+    if (refreshSection && sectionId) await get().fetchSectionDetail(sectionId)
     return { refresh: !!refresh }
   },
 

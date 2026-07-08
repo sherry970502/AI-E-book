@@ -102,6 +102,17 @@ export default function NewBookPage() {
           <span className="text-zinc-500 text-sm">新建课本 · 初始定位</span>
         </div>
 
+        {/* 从零起草入口：只有一句话想法时，AI 起草定位方案+学习目标（目标先于大纲）*/}
+        <button type="button" onClick={() => router.push('/books/new/draft')}
+          className="w-full mb-5 flex items-center gap-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-2xl px-5 py-4 text-left hover:border-purple-300 transition-colors group">
+          <Sparkles className="w-5 h-5 text-purple-500 shrink-0" />
+          <span className="flex-1">
+            <span className="block text-[13.5px] font-semibold text-zinc-800">只有一个大致方向？让 AI 从零起草</span>
+            <span className="block text-[11.5px] text-zinc-500 mt-0.5">一句话（如「给大学生做本生物课本」）→ 定位方案 → 学习目标 → 直接进目录设计</span>
+          </span>
+          <ArrowRight className="w-4 h-4 text-purple-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+        </button>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* ① 创作线路 */}
           <section className="bg-white rounded-2xl border border-zinc-200 p-6">

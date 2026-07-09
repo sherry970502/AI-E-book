@@ -30,7 +30,8 @@ export async function GET(
       questions: getQuestions(s.id),
       objectives: getObjectivesByIds(s.objective_ids),
     }))
-    return { ...ch, sections }
+    // 章级覆盖目标（大纲导出用）
+    return { ...ch, objectives: getObjectivesByIds(ch.objective_ids), sections }
   })
 
   return NextResponse.json({ book, cover, chapters })

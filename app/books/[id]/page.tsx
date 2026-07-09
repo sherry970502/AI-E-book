@@ -401,11 +401,18 @@ export default function BookWorkspacePage() {
             <Palette className="w-3.5 h-3.5" />封面
           </button>
         )}
+        {!inDesignStage && view === 'outline' && (
+          <button onClick={() => window.open(`/books/${bookId}/outline-print?autoprint=1`, '_blank')}
+            title="导出教学大纲为 PDF（含各章节覆盖的学习目标）"
+            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 transition-colors">
+            <Download className="w-3.5 h-3.5" />导出大纲
+          </button>
+        )}
         {!inDesignStage && (
           <button onClick={() => window.open(`/books/${bookId}/print?autoprint=1`, '_blank')}
             title="导出整本书为 PDF（在打印对话框选“另存为 PDF”）"
             className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 transition-colors">
-            <Download className="w-3.5 h-3.5" />导出 PDF
+            <Download className="w-3.5 h-3.5" />导出全书
           </button>
         )}
         {/* 目标库面板只在目录设计阶段出现——正文阶段目标以"本节目标检视条"呈现 */}

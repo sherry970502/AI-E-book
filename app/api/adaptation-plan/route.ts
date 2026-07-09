@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdaptationPlan, upsertAdaptationPlan } from '@/lib/db/queries/adaptation'
 import { callClaude, parseJSON } from '@/lib/ai'
+import { buildIntentParseSystem, buildIntentParsePrompt } from '@/lib/prompts/adaptation'
 
 export async function GET(req: NextRequest) {
   const bookId = req.nextUrl.searchParams.get('book_id')
@@ -25,8 +26,8 @@ export async function PUT(req: NextRequest) {
         .map((s: string, i: number) => `指令${i + 1}：${s}（Mock 解析：将作用于相关章节的生成策略）`)
     } else {
       const raw = await callClaude(
-        [{ role: 'user', content: `老师对改编这本教材的自由意图描述：\n"""${body.free_intent}"""\n\n请解析为 3-6 条结构化改编指令（每条一句话，说明改什么、怎么改、影响范围）。只输出 JSON 数组：["指令1","指令2",...]` }],
-        '你是教材改编策划，把老师的自然语言意图转成清晰的结构化改编指令。',
+        [{ role: 'user', content: buildIntentParsePrompt(body.free_intent) }],
+        buildIntentParseSystem(),
         1500
       )
       structured = parseJSON<string[]>(raw, [])

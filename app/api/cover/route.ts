@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getBook } from '@/lib/db/queries/books'
 import { callClaude } from '@/lib/ai'
+import { buildCoverSystem, buildCoverPrompt } from '@/lib/prompts/cover'
 import type { BookCover } from '@/types'
 
 function getCover(bookId: string): BookCover {
@@ -26,8 +27,8 @@ export async function PUT(req: NextRequest) {
     const book = getBook(body.book_id)
     if (process.env.ANTHROPIC_API_KEY && book) {
       const raw = await callClaude(
-        [{ role: 'user', content: `为教材《${book.title}》设计一幅封面主视觉插画。主题：${book.topic}；受众：${book.audience_grade}；风格：${book.style === 'casual' ? '活泼可爱' : book.style === 'academic' ? '简洁学术' : '现代简约'}。要求：纯 SVG（viewBox="0 0 400 300"），抽象几何或主题元素构图，不含文字，配色和谐。只输出 <svg>…</svg>。` }],
-        '你是专业的书籍封面视觉设计师，输出高质量 SVG 插画。',
+        [{ role: 'user', content: buildCoverPrompt(book) }],
+        buildCoverSystem(),
         4000
       )
       const m = raw.match(/<svg[\s\S]*?<\/svg>/i)

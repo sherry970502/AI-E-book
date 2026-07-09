@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2, Sparkles,
-  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X, Download, ImagePlus, Upload,
+  Target, Wand2, Quote, PanelLeftClose, PanelLeft, Palette, X, Download, ImagePlus, Upload, Cpu,
 } from 'lucide-react'
 import { useBookStore } from '@/store/bookStore'
 import { useEditorStore } from '@/store/editorStore'
@@ -415,6 +415,11 @@ export default function BookWorkspacePage() {
             <Download className="w-3.5 h-3.5" />导出全书
           </button>
         )}
+        <button onClick={() => window.open(`/books/${bookId}/prompts`, '_blank')}
+          title="查看每个 AI 节点实际使用的提示词（用本书真实数据填好）"
+          className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 transition-colors">
+          <Cpu className="w-3.5 h-3.5" />提示词
+        </button>
         {/* 目标库面板只在目录设计阶段出现——正文阶段目标以"本节目标检视条"呈现 */}
         {inDesignStage && (
           <button onClick={() => setObjPanelOpen(!objPanelOpen)}

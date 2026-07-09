@@ -1,0 +1,21 @@
+# 关键：绝不把宿主机(macOS)编译的 node_modules 带进镜像，
+# 否则会覆盖容器里为 linux 编译好的 better-sqlite3 原生二进制
+node_modules
+.next
+out
+build
+
+# 本地 SQLite（线上用 /data 卷，不该进镜像）
+*.db
+*.db-shm
+*.db-wal
+
+# 其他
+.git
+.env*
+*.tsbuildinfo
+npm-debug.log*
+.DS_Store
+Dockerfile
+.dockerignore
+README.md
